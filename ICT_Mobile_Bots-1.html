@@ -1,0 +1,154 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ICT Mobile Bots</title>
+<style>
+:root{--bg:#10141a;--card:#18202b;--ink:#e8eef5;--mut:#8a98a8;--ok:#3ecf8e;--bad:#ff6b6b;--ln:#2a3544}
+*{box-sizing:border-box}body{margin:0;padding:14px;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}p{color:var(--mut);margin:0 0 10px;font-size:13px}
+label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
+input,select{width:100%;padding:11px;border-radius:8px;border:1px solid var(--ln);background:var(--card);color:var(--ink);font-size:16px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{width:100%;margin-top:14px;padding:14px;border:0;border-radius:10px;font-size:16px;font-weight:600;background:var(--ok);color:#04110b}
+button.stop{background:var(--bad);color:#190404}
+button.alt{background:var(--card);color:var(--ink);border:1px solid var(--ln)}
+#accs button{background:var(--card);color:var(--ink);border:1px solid var(--ln);text-align:left;font-size:14px;font-weight:400;margin-top:8px;padding:12px}
+.chk{display:flex;gap:10px;align-items:center;margin-top:12px;font-size:14px}.chk input{width:auto}
+pre{background:#0b0f14;border:1px solid var(--ln);border-radius:8px;padding:10px;font-size:12px;white-space:pre-wrap;max-height:45vh;overflow:auto}
+#bal{margin:10px 0 0;font-size:13px;color:var(--ok)}
+</style></head><body>
+<h1>ICT Mobile Bots</h1>
+<p>Keep this tab open and the screen on. Use a DEMO account first. Signals only unless Auto-trade is ticked.</p>
+<label>Bot</label><select id="bot"><option value="sweep">Sweep + MSS (M15, H4 bias)</option><option value="fvg">FVG + Displacement (M5, H1 bias)</option></select>
+<div class="row"><div><label>Symbol</label><input id="sym" value="R_75"></div><div><label>Stake ($)</label><input id="stake" type="number" value="1" step="0.5"></div></div>
+<div class="row"><div><label>Multiplier</label><input id="mult" type="number" value="100"></div><div><label>Max risk per trade (%)</label><input id="maxr" type="number" value="5"></div></div>
+<div class="chk"><input id="auto" type="checkbox"><span>Auto-trade (needs the login details below)</span></div>
+<label>Personal access token</label><input id="tok" type="password" autocomplete="off">
+<div class="row"><div><label>App ID</label><input id="app"></div><div><label>Account ID (demo)</label><input id="acc"></div></div>
+<button class="alt" onclick="listAccounts()">Find my accounts (needs token + App ID)</button>
+<div id="accs"></div>
+<button id="go" onclick="toggle()">Start bot</button>
+<div id="bal"></div>
+<label>Log</label><pre id="log">Ready.</pre>
+<script>
+const $=i=>document.getElementById(i);
+let pub,tw,C={},price=0,pos=null,pend=null,bal=0,bal0=0,pnl=0,nT=0,day='',cfg,EX,HT,hb,run=false;
+const log=m=>{$('log').textContent=new Date().toLocaleTimeString()+'  '+m+'\n'+$('log').textContent.slice(0,4000)};
+const sd=(w,o)=>w&&w.readyState==1&&w.send(JSON.stringify(o));
+const E=(x,d)=>d>0?x.l:x.h,bey=(a,b,d)=>d>0?a<b:a>b;
+
+async function listAccounts(){
+ const tok=$('tok').value.trim(),app=$('app').value.trim(),box=$('accs');box.textContent='';
+ if(!tok||!app)return log('Enter the token and App ID first');
+ try{const r=await fetch('https://api.derivws.com/trading/v1/options/accounts',{headers:{Authorization:'Bearer '+tok,'Deriv-App-ID':app}});
+  const j=await r.json(),a=Array.isArray(j)?j:(j.data&&(j.data.accounts||j.data))||[];
+  if(!Array.isArray(a)||!a.length)throw new Error(r.status+' '+JSON.stringify(j).slice(0,200));
+  a.forEach(x=>{const id=x.account_id||x.id,b=document.createElement('button');
+   b.textContent=`${id}  |  ${x.balance??''} ${x.currency??''}  ${x.account_type||x.group||''}`;
+   b.onclick=()=>{$('acc').value=id;log('Account set: '+id)};box.appendChild(b)});
+  log('Found '+a.length+' account(s). Tap the DEMO one to use it.');
+ }catch(e){log('Could not list accounts: '+e.message)}}
+function toggle(){run?stop():start()}
+function stop(){run=false;clearInterval(hb);pub&&pub.close();tw&&tw.close();$('go').textContent='Start bot';$('go').className='';log('Stopped')}
+function start(){
+ cfg={bot:$('bot').value,sym:$('sym').value.trim(),stake:+$('stake').value,mult:+$('mult').value,maxR:+$('maxr').value,auto:$('auto').checked,tok:$('tok').value.trim(),app:$('app').value.trim(),acc:$('acc').value.trim()};
+ const s=cfg.bot=='sweep';EX=s?900:300;HT=s?14400:3600;C={};pos=pend=null;run=true;
+ pub=new WebSocket('wss://api.derivws.com/trading/v1/options/ws/public');
+ pub.onopen=()=>{[EX,HT].forEach(g=>sd(pub,{ticks_history:cfg.sym,adjust_start_time:1,count:150,end:'latest',style:'candles',granularity:g,subscribe:1}));sd(pub,{ticks:cfg.sym,subscribe:1});log('Market data connected')};
+ pub.onmessage=onPub;pub.onclose=()=>log('Market data closed');
+ hb=setInterval(()=>{sd(pub,{ping:1});sd(tw,{ping:1})},25000);
+ if(cfg.auto)connectTrade();
+ navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{});
+ $('go').textContent='Stop bot';$('go').className='stop';
+}
+function onPub(e){const m=JSON.parse(e.data);
+ if(m.error)return log('Data API: '+m.error.message);
+ if(m.candles){C[m.echo_req.granularity]=m.candles.map(x=>({t:+x.epoch,o:+x.open,h:+x.high,l:+x.low,c:+x.close}));log('Loaded '+m.candles.length+' candles ('+m.echo_req.granularity+'s)')}
+ else if(m.ohlc){const o=m.ohlc,g=+o.granularity,a=C[g];if(!a)return;
+  const k={t:+o.open_time,o:+o.open,h:+o.high,l:+o.low,c:+o.close};
+  if(a.length&&a[a.length-1].t==k.t)a[a.length-1]=k;else{a.push(k);if(g==EX)onBar()}}
+ else if(m.tick){price=+m.tick.quote;onTick()}}
+
+async function connectTrade(){
+ try{const r=await fetch(`https://api.derivws.com/trading/v1/options/accounts/${cfg.acc}/otp`,{method:'POST',headers:{Authorization:'Bearer '+cfg.tok,'Deriv-App-ID':cfg.app}});
+  const j=await r.json();if(!j.data)throw new Error(JSON.stringify(j).slice(0,200));
+  tw=new WebSocket(j.data.url);
+  tw.onopen=()=>{log('Trading connected');sd(tw,{balance:1})};
+  tw.onclose=()=>log('Trading closed');
+  tw.onmessage=e=>{const m=JSON.parse(e.data);
+   if(m.error){log('Trade API: '+m.error.message);if(pos&&!pos.id){pos=null;nT--}return}
+   if(m.buy&&pos){pos.id=m.buy.contract_id;log('Opened #'+pos.id);sd(tw,{proposal_open_contract:1,contract_id:pos.id,subscribe:1})}
+   const c=m.proposal_open_contract;
+   if(c&&c.is_sold&&pos&&c.contract_id==pos.id){const p=+c.profit;pnl+=p;log('Closed '+(p>=0?'+':'')+p.toFixed(2));pos=null;sd(tw,{balance:1})}
+   if(m.balance){bal=+m.balance.balance;if(!bal0)bal0=bal;$('bal').textContent='Balance $'+bal.toFixed(2)}};
+ }catch(e){log('Trading login failed: '+e.message+' (signals still work)');cfg.auto=false;$('auto').checked=false}}
+
+function eqlv(r,n){let H=-1e18,L=1e18;for(let i=1;i<=n;i++){H=Math.max(H,r[i].h);L=Math.min(L,r[i].l)}return(H+L)/2}
+function find(r,d,j0,j1,s0,s1,ok){
+ for(let j=j0;j<=j1;j++){const lv=E(r[j],d);
+  if(!(bey(lv,E(r[j-1],d),d)&&bey(lv,E(r[j+1],d),d)))continue;
+  for(let s=s0;s<=s1;s++){
+   if(!bey(E(r[s],d),lv,d)||(d>0?r[s].c<=lv:r[s].c>=lv))continue;
+   let t=1;for(let k=s+1;k<j;k++)if(bey(E(r[k],d),lv,d)){t=0;break}if(!t)continue;
+   let m=d>0?-1e18:1e18;for(let k=s+1;k<=s+5;k++)m=d>0?Math.max(m,r[k].h):Math.min(m,r[k].l);
+   if(!ok(s,m))continue;
+   let x=E(r[s],d);for(let k=1;k<=s;k++)x=d>0?Math.min(x,r[k].l):Math.max(x,r[k].h);
+   return x}}return null}
+
+function bias1(h){const H=[],L=[];
+ for(let i=2;i<Math.min(60,h.length-1)&&(H.length<2||L.length<2);i++){
+  if(H.length<2&&h[i].h>h[i-1].h&&h[i].h>h[i+1].h)H.push(h[i].h);
+  if(L.length<2&&h[i].l<h[i-1].l&&h[i].l<h[i+1].l)L.push(h[i].l)}
+ if(H.length<2||L.length<2)return 0;
+ return H[0]>H[1]&&L[0]>L[1]?1:H[0]<H[1]&&L[0]<L[1]?-1:0}
+function sweep(r,h){const b=bias1(h),c1=r[1].c,eq=eqlv(r,100);
+ for(const d of[1,-1]){if(b!=d)continue;if(d>0?c1>eq:c1<eq)continue;
+  const x=find(r,d,10,40,1,8,(s,m)=>d>0?(c1>m&&r[2].c<=m):(c1<m&&r[2].c>=m));
+  if(x==null)continue;const e=price||c1,sl=x-d*e*1e-4,dist=d*(e-sl);if(dist<=0)continue;
+  return{d,entry:e,sl,tp:e+d*dist*2,risk:dist}}return null}
+
+function atr(r){let s=0;for(let i=1;i<=14;i++)s+=Math.max(r[i].h-r[i].l,Math.abs(r[i].h-r[i+1].c),Math.abs(r[i].l-r[i+1].c));return s/14}
+function bias2(h){const n=Math.min(100,h.length-3);let hi=-1e18,lo=1e18;
+ for(let i=1;i<=n;i++){hi=Math.max(hi,h[i].h);lo=Math.min(lo,h[i].l)}
+ const eq=(hi+lo)/2,p=price;let bs=0,ss=0;
+ for(let i=2;i<=n;i++){let u=1;for(let k=1;k<i;k++)if(h[k].h>=h[i].h){u=0;break}
+  if(h[i].h>h[i-1].h&&h[i].h>h[i+1].h&&u&&h[i].h>p&&(!bs||h[i].h<bs))bs=h[i].h;
+  u=1;for(let k=1;k<i;k++)if(h[k].l<=h[i].l){u=0;break}
+  if(h[i].l<h[i-1].l&&h[i].l<h[i+1].l&&u&&h[i].l<p&&(!ss||h[i].l>ss))ss=h[i].l}
+ return p<eq&&bs?{b:1,dr:bs}:p>eq&&ss?{b:-1,dr:ss}:{b:0}}
+function fvg(r,h){const A=atr(r),B=bias2(h),eq=eqlv(r,100);if(!B.b||A<=0)return null;const d=B.b;
+ if(d>0?!(r[1].l>r[3].h):!(r[1].h<r[3].l))return null;
+ if(d*(r[2].c-r[2].o)<1.5*A)return null;
+ const e=d>0?r[1].l:r[1].h;if(d>0?e>eq:e<eq)return null;
+ const x=find(r,d,14,50,3,12,(s,m)=>{if(!(d>0?r[2].c>m:r[2].c<m))return 0;for(let k=3;k<s;k++)if(d>0?r[k].c>m:r[k].c<m)return 0;return 1});
+ if(x==null)return null;const sl=x-d*e*1e-4,dist=d*(e-sl);if(dist<=0||d*(price-e)<=0)return null;
+ let tp=e+d*dist*2;if(d*(B.dr-e)>=dist*2*1.2)tp=B.dr;
+ return{d,entry:e,sl,tp,risk:dist}}
+
+function onBar(){
+ if(C[EX].length<110||!C[HT]||C[HT].length<70)return;
+ const dd=new Date().toDateString();if(dd!=day){day=dd;nT=0;pnl=0}
+ if(pend&&--pend.exp<=0){pend=null;log('Pending setup expired')}
+ if(pos||pend||nT>=(cfg.bot=='sweep'?1:2))return;
+ if(bal0&&pnl<=-0.02*bal0)return;
+ const r=[...C[EX]].reverse(),h=[...C[HT]].reverse();
+ const s=cfg.bot=='sweep'?sweep(r,h):fvg(r,h);if(!s)return;
+ log(`Signal ${s.d>0?'BUY':'SELL'} entry ${s.entry.toFixed(2)} SL ${s.sl.toFixed(2)} TP ${s.tp.toFixed(2)}`);
+ if(cfg.bot=='sweep')openTrade(s);else{pend={...s,exp:12};log('Waiting for price to retrace to the FVG')}}
+
+function openTrade(s){
+ const k=cfg.stake*cfg.mult/s.entry,sa=+(k*s.risk).toFixed(2),ta=+(k*Math.abs(s.tp-s.entry)).toFixed(2);
+ if(sa>=cfg.stake*0.9||sa<0.01)return log(`Skipped: stop loss $${sa} does not fit stake $${cfg.stake}. Change the multiplier.`);
+ if(bal&&sa/bal*100>cfg.maxR)return log(`Skipped: risk $${sa} is ${(sa/bal*100).toFixed(1)}% of balance (max ${cfg.maxR}%)`);
+ if(!cfg.auto||!tw)return log(`Signal only (risk $${sa}, target $${ta})`);
+ nT++;pos={...s,bot:cfg.bot,id:0};
+ sd(tw,{buy:1,price:cfg.stake,parameters:{amount:cfg.stake,basis:'stake',contract_type:s.d>0?'MULTUP':'MULTDOWN',currency:'USD',multiplier:cfg.mult,underlying_symbol:cfg.sym,limit_order:{stop_loss:sa,take_profit:ta}}});
+ log(`Placing ${s.d>0?'MULTUP':'MULTDOWN'}: stop $${sa}, target $${ta}`)}
+
+function onTick(){
+ if(pend){const p=pend;
+  if(p.d*(price-p.sl)<=0){pend=null;log('Setup invalidated')}
+  else if(p.d*(price-p.entry)<=0){pend=null;p.entry=price;p.risk=p.d*(price-p.sl);openTrade(p)}}
+ if(pos&&pos.id&&!pos.closing){const p=pos,pr=p.d*(price-p.entry),R=p.risk;
+  const up=v=>{if(p.ss==null||p.d*(v-p.ss)>0)p.ss=v};
+  if(p.bot=='sweep'){if(pr>=R)up(p.entry+p.d*p.entry*1e-4);if(pr>=1.5*R)up(price-p.d*R)}
+  else if(pr>=2*R)up(p.entry+p.d*p.entry*1e-4);
+  if(p.ss!=null&&p.d*(price-p.ss)<=0){p.closing=1;sd(tw,{sell:p.id,price:0});log('Protective stop hit, closing trade')}}}
+</script></body></html>
