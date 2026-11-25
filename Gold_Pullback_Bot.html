@@ -21,8 +21,8 @@ pre{background:#0b0f14;border:1px solid var(--ln);border-radius:8px;padding:10px
 <div class="row"><div><label>Symbol</label><input id="sym" value="frxXAUUSD"></div><div><label>Stake ($)</label><input id="stake" type="number" value="1" step="0.5"></div></div>
 <div class="row"><div><label>Multiplier</label><input id="mult" type="number" value="100"></div><div><label>Max risk per trade (%)</label><input id="maxr" type="number" value="5"></div></div>
 <div class="chk"><input id="auto" type="checkbox"><span>Auto-trade (needs the login details below)</span></div>
-<label>Personal access token</label><input id="tok" type="password" autocomplete="off">
-<div class="row"><div><label>App ID</label><input id="app"></div><div><label>Account ID (demo)</label><input id="acc"></div></div>
+<label>Personal access token</label><input id="tok" type="password" autocomplete="off"><div class="chk"><input id="rem" type="checkbox" checked><span>Remember token and settings on this phone</span></div>
+<div class="row"><div><label>App ID</label><input id="app" value="34SjXUyINdp52giBgQ7AS"></div><div><label>Account ID (demo)</label><input id="acc"></div></div>
 <button class="alt" onclick="listAccounts()">Find my accounts (needs token + App ID)</button>
 <div id="accs"></div>
 <button id="go" onclick="toggle()">Start bot</button>
@@ -44,7 +44,7 @@ const sd=(w,o)=>w&&w.readyState==1&&w.send(JSON.stringify(o));
 const E=(x,d)=>d>0?x.l:x.h,bey=(a,b,d)=>d>0?a<b:a>b;
 
 async function listAccounts(){
- const tok=$('tok').value.trim(),app=$('app').value.trim(),box=$('accs');box.textContent='';
+ const tok=$('tok').value.replace(/\s+/g,''),app=$('app').value.trim(),box=$('accs');box.textContent='';
  if(!tok||!app)return log('Enter the token and App ID first');
  try{const r=await fetch('https://api.derivws.com/trading/v1/options/accounts',{headers:{Authorization:'Bearer '+tok,'Deriv-App-ID':app}});
   const tx=await r.text();let j={};try{j=JSON.parse(tx)}catch(_){}
@@ -52,7 +52,7 @@ async function listAccounts(){
   if(!Array.isArray(a)||!a.length)throw new Error('HTTP '+r.status+' '+tx.slice(0,300));
   a.forEach(x=>{const id=x.account_id||x.id,b=document.createElement('button');
    b.textContent=`${id}  |  ${x.balance??''} ${x.currency??''}  ${x.account_type||x.group||''}`;
-   b.onclick=()=>{$('acc').value=id;log('Account set: '+id)};box.appendChild(b)});
+   b.onclick=()=>{$('acc').value=id;saveCfg();log('Account set: '+id)};box.appendChild(b)});
   log('Found '+a.length+' account(s). Tap the DEMO one to use it.');
  }catch(e){log('Could not list accounts: '+e.message)}}
 $('bot').onchange=()=>{const g=$('bot').value=='gold';if(g)$('sym').value='frxXAUUSD';else if($('sym').value=='frxXAUUSD')$('sym').value='R_75'};
@@ -67,8 +67,8 @@ document.addEventListener('visibilitychange',()=>{if(run&&!document.hidden){
  if(cfg.auto&&(!tw||tw.readyState>1))connectTrade()}});
 function toggle(){run?stop():start()}
 function stop(){run=false;clearInterval(hb);pub&&pub.close();tw&&tw.close();$('go').textContent='Start bot';$('go').className='';$('pz').style.display='none';log('Stopped')}
-function start(){
- cfg={bot:$('bot').value,sym:$('sym').value.trim(),stake:+$('stake').value,mult:+$('mult').value,maxR:+$('maxr').value,auto:$('auto').checked,tok:$('tok').value.trim(),app:$('app').value.trim(),acc:$('acc').value.trim()};
+function start(){saveCfg();
+ cfg={bot:$('bot').value,sym:$('sym').value.trim(),stake:+$('stake').value,mult:+$('mult').value,maxR:+$('maxr').value,auto:$('auto').checked,tok:$('tok').value.replace(/\s+/g,''),app:$('app').value.trim(),acc:$('acc').value.trim()};
  EX=300;HT=3600;C={};pos=pend=null;run=true;paused=false;$('pz').style.display='block';$('pz').textContent='Pause new trades';
  connectPub();
  hb=setInterval(()=>{sd(pub,{ping:1});sd(tw,{ping:1})},25000);
@@ -197,4 +197,8 @@ function onTick(){
   else if(p.bot=='gold'){if(pr>=R)up(p.entry+p.d*p.entry*1e-5)}
   else if(pr>=2*R)up(p.entry+p.d*p.entry*1e-4);
   if(p.ss!=null&&p.d*(price-p.ss)<=0){p.closing=1;sd(tw,{sell:p.id,price:0});log('Protective stop hit, closing trade')}}}
+const FS=['tok','app','acc','stake','mult','maxr','sym'];
+function saveCfg(){try{const o={};FS.forEach(i=>o[i]=$(i).value.replace(/\s+/g,''));o.rem=$('rem').checked;if(!o.rem)o.tok='';localStorage.setItem('gh_cfg',JSON.stringify(o))}catch(_){}}
+try{const o=JSON.parse(localStorage.getItem('gh_cfg')||'null');if(o){FS.forEach(i=>{if(o[i])$(i).value=o[i]});$('rem').checked=o.rem!==false}}catch(_){}
+FS.concat('rem').forEach(i=>$(i).addEventListener('change',saveCfg));
 render();</script></body></html>
