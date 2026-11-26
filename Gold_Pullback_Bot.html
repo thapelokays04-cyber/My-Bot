@@ -27,7 +27,7 @@ pre{background:#0b0f14;border:1px solid var(--ln);border-radius:8px;padding:10px
 <div id="accs"></div>
 <button id="go" onclick="toggle()">Start bot</button>
 <button id="pz" class="alt" style="display:none" onclick="pauseToggle()">Pause new trades</button>
-<div id="bal"></div><label>Live chart (candles move as the market moves)</label><select id="nb"><option value="40">Zoom: 40 candles</option><option value="80" selected>Zoom: 80 candles</option><option value="150">Zoom: 150 candles</option></select><canvas id="cv" style="width:100%;height:380px;display:block;margin-top:8px;border:1px solid var(--ln);border-radius:10px"></canvas><div id="cs" style="font-size:12px;color:var(--mut);margin-top:6px">Press Start bot to load the chart. Triangles mark where the rules gave a BUY or SELL; shaded boxes show the target (green) and stop (red).</div><div id="stats"></div><table id="ht"></table><button class="alt" style="margin-top:8px;padding:8px;font-size:13px" onclick="if(confirm('Clear saved results?')){hs=[];save();render()}">Clear results</button><p style="margin-top:6px">Results are saved in this phone's browser only.</p>
+<div id="bal"></div><button class="alt" onclick="testTrade()">Test: place one demo trade now</button><label>Live chart (candles move as the market moves)</label><select id="nb"><option value="40">Zoom: 40 candles</option><option value="80" selected>Zoom: 80 candles</option><option value="150">Zoom: 150 candles</option></select><canvas id="cv" style="width:100%;height:380px;display:block;margin-top:8px;border:1px solid var(--ln);border-radius:10px"></canvas><div id="cs" style="font-size:12px;color:var(--mut);margin-top:6px">Press Start bot to load the chart. Triangles mark where the rules gave a BUY or SELL; shaded boxes show the target (green) and stop (red).</div><div id="stats"></div><table id="ht"></table><button class="alt" style="margin-top:8px;padding:8px;font-size:13px" onclick="if(confirm('Clear saved results?')){hs=[];save();render()}">Clear results</button><p style="margin-top:6px">Results are saved in this phone's browser only.</p>
 <label>Log</label><pre id="log">Ready.</pre>
 <script>
 const $=i=>document.getElementById(i);
@@ -180,11 +180,11 @@ function draw(){
  g.fillStyle='#0b0f14';g.fillRect(0,0,W,H);g.lineWidth=1;g.strokeStyle='#1f2a37';
  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v);g.beginPath();g.moveTo(0,y);g.lineTo(pw,y);g.stroke();g.fillStyle='#8a98a8';g.fillText(v.toFixed(2),pw+3,y+4)}
  g.save();g.beginPath();g.rect(0,0,pw,ph);g.clip();
- let ns=0,nw=0,nl=0;const M=[];
- for(let k=Math.max(s,210);k<=n-2;k++){const d=sigAt(b,I,k);if(!d)continue;
+ let ns=0,nw=0,nl=0,busy=0;const M=[];
+ for(let k=210;k<=n-2;k++){const d=sigAt(b,I,k);if(!d||k<busy)continue;
   const A=I.A[k],e=b[k+1].o,sl=e-d*A,tp=e+d*1.5*A;let res=0,xe=n-1;
   for(let j=k+1;j<=n-2;j++){const hs=d>0?b[j].l<=sl:b[j].h>=sl,ht=d>0?b[j].h>=tp:b[j].l<=tp;if(hs){res=-1;xe=j;break}if(ht){res=1;xe=j;break}}
-  ns++;if(res>0)nw++;if(res<0)nl++;M.push({k,d,res});
+  busy=res?xe:n;if(xe<s)continue;if(k>=s){ns++;if(res>0)nw++;if(res<0)nl++;M.push({k,d,res})}
   const x1=X(k+1-s)-cw/2,x2=X(xe-s)+cw/2,yt=Y(tp),ye=Y(e),ys=Y(sl);
   g.fillStyle='rgba(62,207,142,.16)';g.fillRect(x1,Math.min(yt,ye),x2-x1,Math.abs(ye-yt));
   g.fillStyle='rgba(255,107,107,.16)';g.fillRect(x1,Math.min(ys,ye),x2-x1,Math.abs(ys-ye))}
@@ -205,7 +205,16 @@ function draw(){
  g.strokeStyle='#c18bff';g.lineWidth=1.5;g.beginPath();let f=1;V.forEach((x,i)=>{const v=I.rs[s+i];if(v==null)return;f?g.moveTo(X(i),R(v)):g.lineTo(X(i),R(v));f=0});g.stroke();
  g.fillStyle='#8a98a8';g.fillText('RSI(7): buy zone under 35, sell zone over 65',4,r0-4);
  [0,.33,.66,.97].forEach(q=>{const i=Math.min(V.length-1,Math.floor(q*V.length));g.fillText(new Date(V[i].t*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),Math.max(0,X(i)-14),H-4)});
- $('cs').textContent=`In view: ${ns} signals, ${nw} hit target (\u2713), ${nl} hit stop (\u2717). Blue = EMA21, orange = EMA200.`}
+ $('cs').textContent=`In view: ${ns} trades (one at a time, like the bot), ${nw} hit target (\u2713), ${nl} hit stop (\u2717). Blue = EMA21, orange = EMA200.`}
+function testTrade(){
+ if(!run||!cfg||!cfg.auto)return log('Test needs the bot running with Auto-trade ticked (Stop, tick Auto-trade, Start)');
+ if(!tw||tw.readyState!=1)return log('Test needs the trading connection. Wait for "Trading connected"');
+ if(!/^DOT/.test(cfg.acc||''))return log('Test trades are only allowed on a demo account (DOT...)');
+ if(pos)return log('A trade is already open');
+ const b=C[EX];if(!b||b.length<30)return log('Wait for candles to load');
+ const I=ind(b),A=I.A[b.length-2],e=price||b[b.length-1].c;
+ if(!confirm('Place one DEMO test BUY with stake $'+cfg.stake+'?'))return;
+ log('Test trade requested');openTrade({d:1,entry:e,sl:e-A,tp:e+1.5*A,risk:A})}
 $('nb').onchange=()=>{NB=+$('nb').value;sched()};
 function onBar(){if(paused)return;
  if(C[EX].length<260)return;
