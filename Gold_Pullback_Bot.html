@@ -27,7 +27,7 @@ pre{background:#0b0f14;border:1px solid var(--ln);border-radius:8px;padding:10px
 <div id="accs"></div>
 <button id="go" onclick="toggle()">Start bot</button>
 <button id="pz" class="alt" style="display:none" onclick="pauseToggle()">Pause new trades</button>
-<div id="bal"></div><div id="stats"></div><table id="ht"></table><button class="alt" style="margin-top:8px;padding:8px;font-size:13px" onclick="if(confirm('Clear saved results?')){hs=[];save();render()}">Clear results</button><p style="margin-top:6px">Results are saved in this phone's browser only.</p>
+<div id="bal"></div><label>Live chart (candles move as the market moves)</label><select id="nb"><option value="40">Zoom: 40 candles</option><option value="80" selected>Zoom: 80 candles</option><option value="150">Zoom: 150 candles</option></select><canvas id="cv" style="width:100%;height:380px;display:block;margin-top:8px;border:1px solid var(--ln);border-radius:10px"></canvas><div id="cs" style="font-size:12px;color:var(--mut);margin-top:6px">Press Start bot to load the chart. Triangles mark where the rules gave a BUY or SELL; shaded boxes show the target (green) and stop (red).</div><div id="stats"></div><table id="ht"></table><button class="alt" style="margin-top:8px;padding:8px;font-size:13px" onclick="if(confirm('Clear saved results?')){hs=[];save();render()}">Clear results</button><p style="margin-top:6px">Results are saved in this phone's browser only.</p>
 <label>Log</label><pre id="log">Ready.</pre>
 <script>
 const $=i=>document.getElementById(i);
@@ -82,7 +82,8 @@ function onPub(e){const m=JSON.parse(e.data);
  else if(m.ohlc){const o=m.ohlc,g=+o.granularity,a=C[g];if(!a)return;
   const k={t:+o.open_time,o:+o.open,h:+o.high,l:+o.low,c:+o.close};
   if(a.length&&a[a.length-1].t==k.t)a[a.length-1]=k;else{a.push(k);if(g==EX)onBar()}}
- else if(m.tick){price=+m.tick.quote;onTick()}}
+ else if(m.tick){price=+m.tick.quote;onTick()}
+ sched()}
 
 async function connectTrade(){
  try{const r=await fetch(`https://api.derivws.com/trading/v1/options/accounts/${cfg.acc}/otp`,{method:'POST',headers:{Authorization:'Bearer '+cfg.tok,'Deriv-App-ID':cfg.app}});
@@ -156,16 +157,56 @@ function gold(r,h){
  if(dist<0.5*A||dist>2*A)return null;
  return{d,entry:e,sl,tp:e+d*dist*1.5,risk:dist}}
 function ew(a,al){const o=[];let e=null;for(const x of a){e=e===null?x:e*(1-al)+x*al;o.push(e)}return o}
-function pullback(r){
- const b=r.slice(1).reverse(),c=b.map(x=>x.c),n=b.length-1;if(n<250)return null;
- const e21=ema(c,21),e200=ema(c,200),dl=c.slice(1).map((x,i)=>x-c[i]);
+function ind(b){const c=b.map(x=>x.c),e21=ema(c,21),e200=ema(c,200),dl=c.slice(1).map((x,i)=>x-c[i]);
  const ga=ew(dl.map(x=>Math.max(x,0)),1/7),lo=ew(dl.map(x=>Math.max(-x,0)),1/7);
- const rs=k=>lo[k-1]?100-100/(1+ga[k-1]/lo[k-1]):100;
- const tr=b.map((x,i)=>i?Math.max(x.h-x.l,Math.abs(x.h-c[i-1]),Math.abs(x.l-c[i-1])):x.h-x.l),A=ew(tr,1/14)[n];
- const p=b[n-1],r1=rs(n),r0=rs(n-1);
- const d=p.c>e200[n-1]&&p.l<=e21[n-1]&&r0<35&&r1>r0?1:p.c<e200[n-1]&&p.h>=e21[n-1]&&r0>65&&r1<r0?-1:0;
- if(!d||!(A>0))return null;
- const e=price||c[n];return{d,entry:e,sl:e-d*A,tp:e+d*1.5*A,risk:A}}
+ const rs=c.map((_,k)=>k?(lo[k-1]?100-100/(1+ga[k-1]/lo[k-1]):100):null);
+ const tr=b.map((x,i)=>i?Math.max(x.h-x.l,Math.abs(x.h-c[i-1]),Math.abs(x.l-c[i-1])):x.h-x.l);
+ return{c,e21,e200,rs,A:ew(tr,1/14)}}
+function sigAt(b,I,n){const p=b[n-1],r1=I.rs[n],r0=I.rs[n-1];
+ return p.c>I.e200[n-1]&&p.l<=I.e21[n-1]&&r0<35&&r1>r0?1:p.c<I.e200[n-1]&&p.h>=I.e21[n-1]&&r0>65&&r1<r0?-1:0}
+function pullback(r){const b=r.slice(1).reverse(),n=b.length-1;if(n<250)return null;
+ const I=ind(b),d=sigAt(b,I,n),A=I.A[n];if(!d||!(A>0))return null;
+ const e=price||I.c[n];return{d,entry:e,sl:e-d*A,tp:e+d*1.5*A,risk:A}}
+let NB=80,rq=0;
+function sched(){if(!rq){rq=1;requestAnimationFrame(()=>{rq=0;try{draw()}catch(e){}})}}
+function draw(){
+ const cv=$('cv'),b=C[EX];if(!cv||!b||b.length<60)return;
+ const dp=window.devicePixelRatio||1,W=cv.clientWidth,H=380,ph=270,pw=W-50;
+ cv.width=W*dp;cv.height=H*dp;const g=cv.getContext('2d');g.scale(dp,dp);g.font='11px system-ui';
+ const I=ind(b),n=b.length,s=Math.max(0,n-NB),V=b.slice(s),cw=pw/V.length;
+ let lo=1e18,hi=-1e18;V.forEach((x,i)=>{lo=Math.min(lo,x.l,I.e21[s+i]);hi=Math.max(hi,x.h,I.e21[s+i])});
+ const pd=(hi-lo)*.08||1;lo-=pd;hi+=pd;
+ const X=i=>i*cw+cw/2,Y=v=>8+(hi-v)/(hi-lo)*(ph-16);
+ g.fillStyle='#0b0f14';g.fillRect(0,0,W,H);g.lineWidth=1;g.strokeStyle='#1f2a37';
+ for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v);g.beginPath();g.moveTo(0,y);g.lineTo(pw,y);g.stroke();g.fillStyle='#8a98a8';g.fillText(v.toFixed(2),pw+3,y+4)}
+ g.save();g.beginPath();g.rect(0,0,pw,ph);g.clip();
+ let ns=0,nw=0,nl=0;const M=[];
+ for(let k=Math.max(s,210);k<=n-2;k++){const d=sigAt(b,I,k);if(!d)continue;
+  const A=I.A[k],e=b[k+1].o,sl=e-d*A,tp=e+d*1.5*A;let res=0,xe=n-1;
+  for(let j=k+1;j<=n-2;j++){const hs=d>0?b[j].l<=sl:b[j].h>=sl,ht=d>0?b[j].h>=tp:b[j].l<=tp;if(hs){res=-1;xe=j;break}if(ht){res=1;xe=j;break}}
+  ns++;if(res>0)nw++;if(res<0)nl++;M.push({k,d,res});
+  const x1=X(k+1-s)-cw/2,x2=X(xe-s)+cw/2,yt=Y(tp),ye=Y(e),ys=Y(sl);
+  g.fillStyle='rgba(62,207,142,.16)';g.fillRect(x1,Math.min(yt,ye),x2-x1,Math.abs(ye-yt));
+  g.fillStyle='rgba(255,107,107,.16)';g.fillRect(x1,Math.min(ys,ye),x2-x1,Math.abs(ys-ye))}
+ V.forEach((x,i)=>{const c=x.c>=x.o?'#3ecf8e':'#ff6b6b';g.strokeStyle=g.fillStyle=c;g.beginPath();g.moveTo(X(i),Y(x.h));g.lineTo(X(i),Y(x.l));g.stroke();
+  const y1=Y(Math.max(x.o,x.c)),y2=Y(Math.min(x.o,x.c));g.fillRect(X(i)-cw*.35,y1,cw*.7,Math.max(1,y2-y1))});
+ const line=(a,col)=>{g.strokeStyle=col;g.lineWidth=1.5;g.beginPath();V.forEach((x,i)=>{const y=Y(a[s+i]);i?g.lineTo(X(i),y):g.moveTo(X(i),y)});g.stroke()};
+ line(I.e21,'#5aa9ff');line(I.e200,'#ffb454');
+ g.textAlign='center';M.forEach(m=>{const i=m.k-s,x=b[m.k];g.fillStyle=m.d>0?'#3ecf8e':'#ff6b6b';
+  g.font='bold 16px system-ui';g.fillText(m.d>0?'\u25B2':'\u25BC',X(i),m.d>0?Y(x.l)+16:Y(x.h)-6);
+  g.font='11px system-ui';g.fillText(m.res>0?'\u2713':m.res<0?'\u2717':'...',X(i),m.d>0?Y(x.l)+29:Y(x.h)-21)});
+ g.textAlign='left';g.font='11px system-ui';
+ const hl=(v,col,t)=>{if(!(v>lo&&v<hi))return;const y=Y(v);g.strokeStyle=col;g.lineWidth=1;g.setLineDash([4,3]);g.beginPath();g.moveTo(0,y);g.lineTo(pw,y);g.stroke();g.setLineDash([]);g.fillStyle=col;g.fillText(t,4,y-3)};
+ const pr=price||b[n-1].c;hl(pr,'#cfd8e3','price');
+ if(pos&&pos.id){hl(pos.entry,'#ffffff','entry');hl(pos.sl,'#ff6b6b','SL');hl(pos.tp,'#3ecf8e','TP')}
+ g.restore();g.fillStyle='#cfd8e3';if(pr>lo&&pr<hi)g.fillText(pr.toFixed(2),pw+3,Y(pr)+4);
+ const r0=ph+16,rh=H-r0-18,R=v=>r0+(100-v)/100*rh;g.strokeStyle='#1f2a37';g.lineWidth=1;
+ [35,50,65].forEach(v=>{g.beginPath();g.moveTo(0,R(v));g.lineTo(pw,R(v));g.stroke();g.fillStyle='#8a98a8';g.fillText(v,pw+3,R(v)+4)});
+ g.strokeStyle='#c18bff';g.lineWidth=1.5;g.beginPath();let f=1;V.forEach((x,i)=>{const v=I.rs[s+i];if(v==null)return;f?g.moveTo(X(i),R(v)):g.lineTo(X(i),R(v));f=0});g.stroke();
+ g.fillStyle='#8a98a8';g.fillText('RSI(7): buy zone under 35, sell zone over 65',4,r0-4);
+ [0,.33,.66,.97].forEach(q=>{const i=Math.min(V.length-1,Math.floor(q*V.length));g.fillText(new Date(V[i].t*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),Math.max(0,X(i)-14),H-4)});
+ $('cs').textContent=`In view: ${ns} signals, ${nw} hit target (\u2713), ${nl} hit stop (\u2717). Blue = EMA21, orange = EMA200.`}
+$('nb').onchange=()=>{NB=+$('nb').value;sched()};
 function onBar(){if(paused)return;
  if(C[EX].length<260)return;
  const dd=new Date().toDateString();if(dd!=day){day=dd;nT=0;pnl=0}
