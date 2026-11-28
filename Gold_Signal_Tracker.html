@@ -1,0 +1,339 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signal Tracker</title>
+<style>
+:root{--bg:#10141a;--card:#18202b;--ink:#e8eef5;--mut:#8a98a8;--ok:#3ecf8e;--bad:#ff6b6b;--ln:#2a3544;--acc:#5aa9ff}
+*{box-sizing:border-box}body{margin:0;padding:14px;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}p{color:var(--mut);margin:0 0 10px;font-size:13px}
+label{display:block;font-size:12px;color:var(--mut);margin:10px 0 3px}
+input,select{width:100%;padding:11px;border-radius:8px;border:1px solid var(--ln);background:var(--card);color:var(--ink);font-size:16px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ck{display:inline-flex;align-items:center;gap:6px;margin:4px 12px 4px 0;font-size:14px;color:var(--ink)}.ck input{width:auto}
+button{width:100%;margin-top:12px;padding:13px;border:0;border-radius:10px;font-size:16px;font-weight:600;background:var(--ok);color:#04110b}
+button.alt{background:var(--card);color:var(--ink);border:1px solid var(--ln)}button.stop{background:var(--bad);color:#190404}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:10px;font-size:12px;color:var(--mut)}.card b{display:block;font-size:20px;color:var(--ink)}
+.good{color:var(--ok)!important}.bad{color:var(--bad)!important}
+#st,#li,#al{font-size:12px;color:var(--mut);margin-top:8px}#al{color:#ffd166;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}td,th{padding:6px 4px;border-bottom:1px solid var(--ln);text-align:right}td:first-child,th:first-child{text-align:left}th{color:var(--mut);font-weight:500}
+.tr{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:9px 11px;margin-top:8px;font-size:13px}.tr .m{color:var(--mut);font-size:12px;margin:2px 0}.tr .p{font-weight:700;font-size:15px}
+.tag{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;background:#223044;color:var(--acc);margin-left:6px}.live{background:#3a2f12;color:#ffd166}
+textarea{width:100%;height:120px;background:#0b0f14;color:var(--ink);border:1px solid var(--ln);border-radius:8px;font-size:12px;display:none;margin-top:8px}
+.tr.sel{border-color:var(--acc)}#cv{touch-action:pan-y}</style></head><body>
+<h1>Signal Tracker</h1>
+<p>No trading and no login. It scans all the strategies on live market data and shows every signal and what it would have made with your lot size.</p>
+<label>Market</label><select id="mk"><option value="frxXAUUSD">Gold (XAU/USD)</option><optgroup label="Volatility"><option value="R_10">Volatility 10</option><option value="R_25">Volatility 25</option><option value="R_50">Volatility 50</option><option value="R_75">Volatility 75</option><option value="R_100">Volatility 100</option></optgroup><optgroup label="Volatility (1s)"><option value="1HZ10V">Volatility 10 (1s)</option><option value="1HZ25V">Volatility 25 (1s)</option><option value="1HZ50V">Volatility 50 (1s)</option><option value="1HZ75V">Volatility 75 (1s)</option><option value="1HZ100V">Volatility 100 (1s)</option></optgroup><optgroup label="Step"><option value="stpRNG">Step Index 100</option><option value="stpRNG2">Step Index 200</option><option value="stpRNG3">Step Index 300</option><option value="stpRNG4">Step Index 400</option><option value="stpRNG5">Step Index 500</option></optgroup><option value="custom">Other (type the code)</option></select>
+<div class="row"><div><label>Symbol code</label><input id="sym" value="frxXAUUSD"></div><div><label>Lot size</label><input id="lot" type="number" step="0.01" min="0" value="0.10"></div></div>
+<div class="row"><div><label>$ per 1.00 price move per 1 lot</label><input id="vpp" type="number" value="100"></div><div><label>Spread (price units)</label><input id="sp" type="number" step="0.01" value="0.30"></div></div>
+<div class="row"><div><label>Account size ($)</label><input id="acct" type="number" value="1000"></div><div><label>Show trades from</label><select id="win"><option value="12">Last 12 hours</option><option value="24">Last 24 hours</option><option value="48">Last 48 hours</option><option value="0" selected>All loaded data</option></select></div></div>
+<div class="row"><div><label>FVG mode</label><select id="fm"><option value="balanced">Balanced</option><option value="strict">Strict</option></select></div><div><label>Choppy-market filter</label><select id="rg"><option value="on">On</option><option value="off">Off</option></select></div></div>
+<label>Strategies</label><div><label class="ck"><input type="checkbox" class="stc" value="fvgr" checked> FVG Retest</label><label class="ck"><input type="checkbox" class="stc" value="fvg" checked> ICT FVG</label><label class="ck"><input type="checkbox" class="stc" value="pullback" checked> Pullback RSI</label><label class="ck"><input type="checkbox" class="stc" value="hunter" checked> Gold Hunter</label><label class="ck"><input type="checkbox" class="stc" value="gold" checked> Gold Scalper</label><label class="ck"><input type="checkbox" class="stc" value="sweep" checked> ICT Sweep+MSS</label></div>
+<div id="li"></div>
+<button id="go">Load signals</button>
+<div id="st">Press Load signals.</div><div id="al"></div>
+<div class="row" id="cards" style="margin-top:12px"></div>
+<label>Chart (tap a trade marker, or tap a trade in the list)</label>
+<div class="row"><select id="tf"><option value="60">M1</option><option value="300" selected>M5</option><option value="900">M15</option><option value="3600">H1</option><option value="14400">H4</option></select><select id="zm"><option value="40">40 candles</option><option value="80" selected>80 candles</option><option value="150">150 candles</option><option value="300">300 candles</option></select></div>
+<label class="ck"><input type="checkbox" id="fz" checked> Show fair value gaps</label>
+<canvas id="cv" style="width:100%;height:400px;display:block;margin-top:6px;border:1px solid var(--ln);border-radius:10px"></canvas>
+<div class="row"><button class="alt" id="bp">&larr; Older</button><button class="alt" id="bn">Newer &rarr;</button></div><button class="alt" id="bl">Jump to latest</button>
+<div class="tr" id="sel" style="display:none"></div>
+<p id="lg" style="margin-top:8px">Arrow = entry (green BUY, red SELL) with the strategy tag. Green box = target, red box = stop. Dot = exit: green target, red stop, yellow break-even or trail. Grey line = EMA9, blue = EMA21, orange = EMA200. Shaded blue or purple = fair value gap. Drag the chart to scroll back in time.</p>
+<label>By strategy</label><div id="by"></div>
+<label>Every signal (newest first)</label><div id="list"></div>
+<button class="alt" id="cp">Copy trades as text (CSV)</button><textarea id="csv" readonly></textarea>
+<p style="margin-top:12px">Results use closed candles. When one candle touches both stop and target, it counts as a stop. Only the spread you set is charged, so real fees and slippage would lower these numbers. The data covers only the recent candles loaded, which is a small sample.</p>
+<script>
+const $=i=>document.getElementById(i);
+let cfg={sym:'frxXAUUSD',fvgMode:'balanced',regime:'on'},price=0,HRV=null,C={},pub=null,run=false,inited=false,SG={},TR=[],seen={},GR=[],cnt={},rq=0,rc=0,ptimer=0;
+const HR=()=>/^frx/.test(cfg.sym||'frx')?(HRV===null?new Date().getUTCHours():HRV):12;
+const ST={"fvgr": {"ex": 300, "ht": 3600, "nb": 260, "hb": 5, "cap": 6}, "pullback": {"ex": 300, "ht": 3600, "nb": 260, "hb": 5, "cap": 8}, "hunter": {"ex": 60, "ht": 300, "nb": 80, "hb": 215, "cap": 12}, "gold": {"ex": 300, "ht": 3600, "nb": 110, "hb": 70, "cap": 5}, "sweep": {"ex": 900, "ht": 14400, "nb": 110, "hb": 70, "cap": 2}, "fvg": {"ex": 300, "ht": 3600, "nb": 110, "hb": 70, "cap": 4}};
+const NAMES={"fvgr": "FVG Retest", "fvg": "ICT FVG", "pullback": "Pullback RSI", "hunter": "Gold Hunter", "gold": "Gold Scalper", "sweep": "ICT Sweep+MSS"};
+function ema(a,n){const k=2/(n+1);let e=a[0];const o=[e];for(let i=1;i<a.length;i++){e=a[i]*k+e*(1-k);o.push(e)}return o}
+function ew(a,al){const o=[];let e=null;for(const x of a){e=e===null?x:e*(1-al)+x*al;o.push(e)}return o}
+function atr(r){let s=0;for(let i=1;i<=14;i++)s+=Math.max(r[i].h-r[i].l,Math.abs(r[i].h-r[i+1].c),Math.abs(r[i].l-r[i+1].c));return s/14}
+function calcADX(r,n=14){
+  if(r.length<n*2+2)return 25;
+  let trS=0,pDM=0,mDM=0;
+  for(let i=n;i>=1;i--){
+    const up=r[i].h-r[i+1].h,dn=r[i+1].l-r[i].l;
+    pDM+=(up>dn&&up>0)?up:0;mDM+=(dn>up&&dn>0)?dn:0;
+    trS+=Math.max(r[i].h-r[i].l,Math.abs(r[i].h-r[i+1].c),Math.abs(r[i].l-r[i+1].c));
+  }
+  if(!trS)return 0;
+  const pDI=100*pDM/trS,mDI=100*mDM/trS;
+  return (pDI+mDI)?100*Math.abs(pDI-mDI)/(pDI+mDI):0;
+}
+function checkRegime(r){
+  if(!cfg||cfg.regime!=='on')return{ok:true,adx:25};
+  const A=atr(r),adx=calcADX(r,14);
+  if(adx<18)return{ok:false,reason:`Choppy market (ADX ${adx.toFixed(1)} < 18)`};
+  if((r[1].h-r[1].l)>3.0*A)return{ok:false,reason:'Volatility spike bar (>3x ATR) — waiting'};
+  return{ok:true,adx:+adx.toFixed(1)};
+}
+function eqlv(r,n){let H=-1e18,L=1e18;for(let i=1;i<=n;i++){H=Math.max(H,r[i].h);L=Math.min(L,r[i].l)}return(H+L)/2}
+function find(r,d,j0,j1,s0,s1,ok){
+  for(let j=j0;j<=j1;j++){const lv=E(r[j],d);
+    if(!(bey(lv,E(r[j-1],d),d)&&bey(lv,E(r[j+1],d),d)))continue;
+    for(let s=s0;s<=s1;s++){
+      if(!bey(E(r[s],d),lv,d)||(d>0?r[s].c<=lv:r[s].c>=lv))continue;
+      let t=1;for(let k=s+1;k<j;k++)if(bey(E(r[k],d),lv,d)){t=0;break}if(!t)continue;
+      let m=d>0?-1e18:1e18;for(let k=s+1;k<=s+5;k++)m=d>0?Math.max(m,r[k].h):Math.min(m,r[k].l);
+      if(!ok(s,m))continue;
+      let x=E(r[s],d);for(let k=1;k<=s;k++)x=d>0?Math.min(x,r[k].l):Math.max(x,r[k].h);
+      return x}}return null}
+function bias1(h){const H=[],L=[];
+  for(let i=2;i<Math.min(60,h.length-1)&&(H.length<2||L.length<2);i++){
+    if(H.length<2&&h[i].h>h[i-1].h&&h[i].h>h[i+1].h)H.push(h[i].h);
+    if(L.length<2&&h[i].l<h[i-1].l&&h[i].l<h[i+1].l)L.push(h[i].l)}
+  if(H.length<2||L.length<2)return 0;
+  return H[0]>H[1]&&L[0]>L[1]?1:H[0]<H[1]&&L[0]<L[1]?-1:0}
+function sweep(r,h){const b=bias1(h),c1=r[1].c,eq=eqlv(r,100),A=atr(r);
+  for(const d of[1,-1]){if(b!==d)continue;if(d>0?c1>eq:c1<eq)continue;
+    const x=find(r,d,10,40,1,8,(s,m)=>d>0?(c1>m&&r[2].c<=m):(c1<m&&r[2].c>=m));
+    if(x==null)continue;const e=price||c1,sl=x-d*0.15*A,dist=d*(e-sl);if(dist<=0)continue;
+    return{d,entry:e,sl,tp:e+d*dist*2,risk:dist}}return null}
+function bias2(h){const n=Math.min(100,h.length-3);let hi=-1e18,lo=1e18;
+  for(let i=1;i<=n;i++){hi=Math.max(hi,h[i].h);lo=Math.min(lo,h[i].l)}
+  const eq=(hi+lo)/2,p=price||h[1].c;let bs=0,ss=0;
+  for(let i=2;i<=n;i++){let u=1;for(let k=1;k<i;k++)if(h[k].h>=h[i].h){u=0;break}
+    if(h[i].h>h[i-1].h&&h[i].h>h[i+1].h&&u&&h[i].h>p&&(!bs||h[i].h<bs))bs=h[i].h;
+    u=1;for(let k=1;k<i;k++)if(h[k].l<=h[i].l){u=0;break}
+    if(h[i].l<h[i-1].l&&h[i].l<h[i+1].l&&u&&h[i].l<p&&(!ss||h[i].l>ss))ss=h[i].l}
+  return p<eq&&bs?{b:1,dr:bs}:p>eq&&ss?{b:-1,dr:ss}:{b:0}}
+function fvg(r,h){
+  const A=atr(r),B=bias2(h),eq=eqlv(r,100);
+  if(!B.b||A<=0)return null;
+  const d=B.b,strict=(cfg?cfg.fvgMode:$('fvgMode').value)==='strict';
+  if(d>0?!(r[1].l>r[3].h):!(r[1].h<r[3].l))return null;
+  const dispMult=strict?1.5:1.1;
+  if(d*(r[2].c-r[2].o)<dispMult*A)return null;
+  const zTop=d>0?r[1].l:r[3].l,zBot=d>0?r[3].h:r[1].h;
+  const e=d>0?zTop:zBot;
+  if(strict&&(d>0?e>eq:e<eq))return null;
+  let slSwing=null;
+  if(strict){
+    slSwing=find(r,d,14,50,3,12,(s,m)=>{
+      if(!(d>0?r[2].c>m:r[2].c<m))return 0;
+      for(let k=3;k<s;k++)if(d>0?r[k].c>m:r[k].c<m)return 0;
+      return 1;
+    });
+    if(slSwing==null)return null;
+  }else{
+    slSwing=d>0?Math.min(r[1].l,r[2].l,r[3].l):Math.max(r[1].h,r[2].h,r[3].h);
+  }
+  const sl=slSwing-d*0.15*A,dist=d*(e-sl);
+  if(dist<=0||d*((price||r[1].c)-e)<=0)return null;
+  let tp=e+d*dist*2;if(d*(B.dr-e)>=dist*2*1.2)tp=B.dr;
+  return{d,entry:e,zTop,zBot,sl,tp,risk:dist,qualified:true};
+}
+function fvgr(r){
+  const b=r.slice(1).reverse(),n=b.length-1;if(n<250)return null;
+  const I=ind(b),A=I.A[n],e50=ema(I.c,50)[n],c=I.c[n];if(!(A>0))return null;
+  const d=c>I.e200[n]&&I.e21[n]>e50?1:c<I.e200[n]&&I.e21[n]<e50?-1:0;if(!d)return null;
+  const x=b[n];if(d*(x.c-x.o)<=0)return null;
+  for(let i=n-1;i>=n-40&&i>=2;i--){
+    const top=d>0?b[i].l:b[i-2].l,bot=d>0?b[i-2].h:b[i].h;
+    if(d>0?!(b[i].l>b[i-2].h):!(b[i].h<b[i-2].l))continue;
+    if(top-bot<0.3*A||Math.abs(b[i-1].c-b[i-1].o)<0.8*A)continue;
+    const tch=j=>d>0?b[j].l<=top:b[j].h>=bot;
+    let fresh=true;for(let j=i+1;j<n;j++)if(tch(j)){fresh=false;break}
+    if(!fresh||!tch(n)||(d>0?x.c<=bot:x.c>=top))continue;
+    const e=price||x.c;let sl=d>0?bot-0.2*A:top+0.2*A;if(d*(e-sl)<0.5*A)sl=e-d*0.5*A;
+    const dist=d*(e-sl);if(dist<=0||dist>3*A)continue;
+    return{d,entry:e,sl,tp:e+d*2*dist,risk:dist}
+  }
+  return null;
+}
+function gold(r,h){
+  const u=HR();if(u<7||u>16)return null;
+  const hc=ema(h.slice(1).reverse().map(x=>x.c),50),hl=hc.length-1;if(hl<5)return null;
+  const d=hc[hl]>hc[hl-3]&&h[1].c>hc[hl]?1:hc[hl]<hc[hl-3]&&h[1].c<hc[hl]?-1:0;if(!d)return null;
+  const cl=r.slice(1).reverse().map(x=>x.c),e9=ema(cl,9),e21=ema(cl,21),n=cl.length-1;
+  if(d*(e9[n]-e21[n])<=0)return null;
+  if(!(d*(r[1].c-r[1].o)>0&&d*(r[1].c-e9[n])>0))return null;
+  let x=d>0?1e18:-1e18,t=0;
+  for(let k=1;k<=7;k++){x=d>0?Math.min(x,r[k].l):Math.max(x,r[k].h);if(k>1&&(d>0?r[k].l<=e21[n-k+1]:r[k].h>=e21[n-k+1]))t=1}
+  if(!t)return null;
+  const A=atr(r),e=price||r[1].c,sl=x-d*0.2*A,dist=d*(e-sl);
+  if(dist<0.5*A||dist>2*A)return null;
+  return{d,entry:e,sl,tp:e+d*dist*1.5,risk:dist}}
+function rsi(c,n){let g=0,l=0;for(let i=1;i<=n;i++){const d=c[i]-c[i-1];d>0?g+=d:l-=d}g/=n;l/=n;const o=[];o[n]=l?100-100/(1+g/l):100;
+  for(let i=n+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(n-1)+Math.max(d,0))/n;l=(l*(n-1)+Math.max(-d,0))/n;o[i]=l?100-100/(1+g/l):100}return o}
+function mh(c){const a=ema(c,12),b=ema(c,26),m=a.map((x,i)=>x-b[i]),q=ema(m,9);return m.map((x,i)=>x-q[i])}
+function sma(c,n){let q=0;for(let i=c.length-n;i<c.length;i++)q+=c[i];return q/n}
+function hunter(r,h){
+  const u=HR();if(u<7||u>20)return null;
+  const hc=h.slice(1).reverse().map(x=>x.c),k5=hc.length-1,p5=hc[k5];
+  const a9=ema(hc,9),a21=ema(hc,21),a50=ema(hc,50),a200=ema(hc,200),R5=rsi(hc,14),H5=mh(hc);
+  const d=a9[k5]>a21[k5]&&p5>a50[k5]&&p5>a200[k5]&&R5[k5]>50&&H5[k5]>0?1:a9[k5]<a21[k5]&&p5<a50[k5]&&p5<a200[k5]&&R5[k5]<50&&H5[k5]<0?-1:0;
+  if(!d)return null;
+  const m1=r.slice(1).reverse(),c=m1.map(x=>x.c),n=c.length-1,e9=ema(c,9),e21=ema(c,21),R1=rsi(c,14),H1=mh(c),x=m1[n];
+  if(d*(e9[n]-e21[n])<=0||d*(x.c-x.o)<=0||d*(x.c-e9[n])<=0)return null;
+  if(d*(R1[n]-50)<=0||d*H1[n]<=0||d*(H1[n]-H1[n-1])<=0)return null;
+  let t=0;for(let k=0;k<3;k++){const b=m1[n-k],bb=sma(c.slice(0,n-k+1),20);if(d>0?(b.l<=e9[n-k]||b.l<=bb):(b.h>=e9[n-k]||b.h>=bb))t=1}
+  if(!t)return null;
+  const A=atr(r);if(!(A>0))return null;
+  let q=0;for(let i=1;i<=50;i++)q+=Math.max(r[i].h-r[i].l,Math.abs(r[i].h-r[i+1].c),Math.abs(r[i].l-r[i+1].c));
+  if(A<0.6*q/50||Math.abs(x.c-e9[n])>A)return null;
+  let w=d>0?1e18:-1e18;for(let i=1;i<=5;i++)w=d>0?Math.min(w,r[i].l):Math.max(w,r[i].h);
+  const e=price||x.c;let sl=w-d*0.2*A;if(d*(e-sl)<A)sl=e-d*A;const dist=d*(e-sl);
+  return{d,entry:e,sl,tp:e+d*dist*2,risk:dist,atr:A}}
+function ind(b){const c=b.map(x=>x.c),e21=ema(c,21),e200=ema(c,200),dl=c.slice(1).map((x,i)=>x-c[i]);
+  const ga=ew(dl.map(x=>Math.max(x,0)),1/7),lo=ew(dl.map(x=>Math.max(-x,0)),1/7);
+  const rs=c.map((_,k)=>k?(lo[k-1]?100-100/(1+ga[k-1]/lo[k-1]):100):null);
+  const tr=b.map((x,i)=>i?Math.max(x.h-x.l,Math.abs(x.h-c[i-1]),Math.abs(x.l-c[i-1])):x.h-x.l);
+  return{c,e21,e200,rs,A:ew(tr,1/14)}}
+function sigAt(b,I,n){const p=b[n-1],r1=I.rs[n],r0=I.rs[n-1];
+  return p.c>I.e200[n-1]&&p.l<=I.e21[n-1]&&r0<35&&r1>r0?1:p.c<I.e200[n-1]&&p.h>=I.e21[n-1]&&r0>65&&r1<r0?-1:0}
+function pullback(r){const b=r.slice(1).reverse(),n=b.length-1;if(n<250)return null;
+  const I=ind(b),d=sigAt(b,I,n),A=I.A[n];if(!d||!(A>0))return null;
+  const e=price||I.c[n];return{d,entry:e,sl:e-d*A,tp:e+d*1.5*A,risk:A}}
+function cacheKey(k,b,i){return k+cfg.regime+cfg.fvgMode+cfg.sym+':'+b[i].t}
+function sigHist(k,b,i,ex,ht){
+ const key=cacheKey(k,b,i);if(key in SG)return SG[key];
+ const r=[b[i]].concat(b.slice(0,i+1).reverse()),H=C[ht]||[],t1=b[i].t+ex,h=H.filter(x=>x.t+ht<=t1),hr=[h[h.length-1]||b[i]].concat(h.slice().reverse());
+ const sp=price;price=b[i].c;HRV=new Date(b[i].t*1000).getUTCHours();let s=null;
+ try{if(checkRegime(r).ok){s=({fvgr:x=>fvgr(x),pullback:x=>pullback(x),hunter,gold,sweep,fvg})[k](r,hr);if(s)s.adx=0}}catch(e){}
+ price=sp;HRV=null;return SG[key]=s}
+function simulate(k,b,i,s){
+ const n=b.length,d=s.d,isF=k==='fvg';let e,j0,sl=s.sl,tp=s.tp;
+ if(isF){let j=-1;for(let q=i+1;q<=Math.min(i+20,n-1);q++)if(d>0?b[q].l<=s.entry:b[q].h>=s.entry){j=q;break}
+  if(j<0)return{none:true,until:Math.min(i+20,n-1)};
+  e=d>0?Math.min(b[j].o,s.entry):Math.max(b[j].o,s.entry);j0=j;if(Math.abs(e-sl)<=0||d*(tp-e)<=0)return{none:true,until:j}}
+ else{j0=i+1;e=b[j0].o;const rr=Math.abs(s.tp-s.entry)/s.risk,r0=s.risk;sl=e-d*r0;tp=e+d*rr*r0}
+ const R=Math.abs(e-sl),beAt=isF?2:1,off=(k==='sweep'||isF)?1e-4:1e-5;let ss=null,ex=null,why='',xj=-1;
+ const up=v=>{if(ss===null||d*(v-ss)>0)ss=v};
+ for(let j=j0;j<=n-1;j++){const x=b[j],st=ss===null?sl:(d>0?Math.max(sl,ss):Math.min(sl,ss));
+  const hs=d>0?x.l<=st:x.h>=st,ht=!(isF&&j===j0)&&(d>0?x.h>=tp:x.l<=tp);
+  if(hs){ex=(d>0?x.o<st:x.o>st)?x.o:st;why=(ss!==null&&d*(st-e)>=0)?'BE/trail':'SL';xj=j;break}
+  if(ht){ex=tp;why='TP';xj=j;break}
+  if(k!=='pullback'){const ext=d>0?x.h:x.l,pr=d*(ext-e);
+   if(pr>=beAt*R)up(e+d*e*off);
+   if(k==='sweep'&&pr>=1.5*R)up(ext-d*R);
+   if(k==='hunter'&&pr>=1.5*R)up(ext-d*(s.atr||R))}}
+ return{k,d,t:b[j0].t,entry:e,sl,tp,ex,why:xj<0?'OPEN':why,open:xj<0,xj:xj<0?1e9:xj,risk:R,xt:xj<0?null:b[xj].t}}
+function recompute(){
+ const on=[...document.querySelectorAll('.stc')].filter(x=>x.checked).map(x=>x.value);TR=[];
+ on.forEach(k=>{const T=ST[k],b=C[T.ex];if(!b||b.length<T.nb+5||!C[T.ht]||C[T.ht].length<T.hb)return;
+  const n=b.length;let busy=0;const day={};
+  for(let i=T.nb;i<=n-2;i++){
+   if(i<busy)continue;
+   const dk=new Date(b[i].t*1000).toDateString(),D=day[dk]||(day[dk]={n:0,cl:0});
+   if(D.n>=T.cap||D.cl>=3)continue;
+   const s=sigHist(k,b,i,T.ex,T.ht);if(!s)continue;
+   const o=simulate(k,b,i,s);
+   if(o.none){busy=o.until;continue}
+   D.n++;busy=o.open?1e9:o.xj;
+   if(!o.open){const pm=o.d*(o.ex-o.entry)-(+cfg.sp||0);D.cl=pm<0?D.cl+1:0}
+   o.sigT=b[i].t+T.ex;TR.push(o)}});
+ TR.sort((a,b)=>b.t-a.t);
+ TR.forEach(o=>{const key=o.k+o.t;if(!(key in seen)){seen[key]=1;if(inited&&Date.now()/1000-o.t<900)alertNew(o)}});
+ inited=true}
+function alertNew(o){const m=`New ${o.d>0?'BUY':'SELL'} signal: ${NAMES[o.k]} at ${o.entry.toFixed(2)}`;$('al').textContent=new Date().toLocaleTimeString()+'  '+m;try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
+const f2=v=>(v>=0?'+':'-')+'$'+Math.abs(v).toFixed(2);
+function money(o){const lot=+$('lot').value||0,vpp=+$('vpp').value||0,sp=+$('sp').value||0,ex=o.open?(price||o.entry):o.ex,pm=o.d*(ex-o.entry)-sp;return{pm,usd:pm*lot*vpp,R:o.risk?pm/o.risk:0,ex}}
+function render(){
+ rq=0;const lot=+$('lot').value||0,vpp=+$('vpp').value||0,acct=+$('acct').value||0,win=+$('win').value;
+ $('li').textContent=`${lot} lot: a 1.00 price move = $${(lot*vpp).toFixed(2)}. Spread cost per trade = $${((+$('sp').value||0)*lot*vpp).toFixed(2)}.`;
+ const lim=win?Date.now()/1000-win*3600:0,L=TR.filter(o=>o.t>=lim);
+ const rows=L.map(o=>({o,m:money(o)})),cl=rows.filter(r=>!r.o.open);
+ const tot=rows.reduce((s,r)=>s+r.m.usd,0),wins=rows.filter(r=>r.m.usd>0).length;
+ let pk=0,eq=0,dd=0;cl.slice().sort((a,b)=>a.o.xj-b.o.xj).forEach(r=>{eq+=r.m.usd;pk=Math.max(pk,eq);dd=Math.max(dd,pk-eq)});
+ $('cards').innerHTML=`<div class="card">Total P/L<b class="${tot>=0?'good':'bad'}">${f2(tot)}</b>${acct?((tot/acct*100).toFixed(1)+'% of $'+acct):''}</div><div class="card">Win rate<b>${rows.length?Math.round(100*wins/rows.length):0}%</b>${wins} of ${rows.length}</div><div class="card">Trades<b>${rows.length}</b>${rows.filter(r=>r.o.open).length} open now</div><div class="card">Worst drop<b class="bad">-$${dd.toFixed(2)}</b>closed trades</div>`;
+ const by={};rows.forEach(r=>{const q=by[r.o.k]||(by[r.o.k]={n:0,w:0,p:0,gp:0,gl:0});q.n++;q.p+=r.m.usd;if(r.m.usd>0){q.w++;q.gp+=r.m.usd}else q.gl-=r.m.usd});
+ $('by').innerHTML='<table><tr><th>Strategy</th><th>Trades</th><th>Win%</th><th>P/L</th><th>PF</th></tr>'+Object.keys(by).sort((a,b)=>by[b].p-by[a].p).map(k=>{const q=by[k];return`<tr><td>${NAMES[k]}</td><td>${q.n}</td><td>${Math.round(100*q.w/q.n)}%</td><td class="${q.p>=0?'good':'bad'}">${f2(q.p)}</td><td>${q.gl?(q.gp/q.gl).toFixed(2):'-'}</td></tr>`}).join('')+'</table>';
+ $('list').innerHTML=rows.slice(0,120).map(({o,m})=>`<div class="tr" data-k="${o.k+o.t}" onclick="pick('${o.k+o.t}',true)"><div><b>${NAMES[o.k]}</b> &middot; ${o.d>0?'BUY':'SELL'}<span class="tag ${o.open?'live':''}">${o.open?'OPEN (live)':o.why}</span></div><div class="m">${new Date(o.t*1000).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})} &middot; ${o.entry.toFixed(2)} &rarr; ${m.ex.toFixed(2)} &middot; stop ${o.sl.toFixed(2)} target ${o.tp.toFixed(2)}</div><div class="p ${m.usd>=0?'good':'bad'}">${f2(m.usd)} &middot; ${m.R>=0?'+':''}${m.R.toFixed(1)}R</div></div>`).join('')||'<p>No signals in this period.</p>';
+ window.__rows=rows;draw()}
+function sched(){if(!rq){rq=1;requestAnimationFrame(render)}}
+function setStatus(t){$('st').textContent=t}
+function connect(){
+ if(pub){pub.onclose=null;pub.close()}
+ pub=new WebSocket('wss://api.derivws.com/trading/v1/options/ws/public');
+ pub.onopen=()=>{setStatus('Connected. Loading candles...');GR.forEach(g=>pub.send(JSON.stringify({ticks_history:cfg.sym,adjust_start_time:1,count:cnt[g]||1000,end:'latest',style:'candles',granularity:g,subscribe:1})));pub.send(JSON.stringify({ticks:cfg.sym,subscribe:1}))};
+ pub.onmessage=e=>{const m=JSON.parse(e.data);
+  if(m.error){const q=m.echo_req||{};if(q.ticks_history&&(q.count||0)>500&&!cnt[q.granularity]){cnt[q.granularity]=500;pub.send(JSON.stringify({...q,count:500}));return}
+   return setStatus('Data error: '+m.error.message)}
+  if(m.candles){const g=m.echo_req.granularity;C[g]=m.candles.map(x=>({t:+x.epoch,o:+x.open,h:+x.high,l:+x.low,c:+x.close}));
+   if(GR.every(g=>C[g])&&!rc){rc=1;setStatus('Calculating signals...');setTimeout(()=>{recompute();rc=0;setStatus('Live. '+GR.map(g=>TFN[g]+' '+(C[g]||[]).length).join(' | '));sched()},30)}}
+  else if(m.ohlc){const o=m.ohlc,g=+o.granularity,a=C[g];if(!a)return;const k={t:+o.open_time,o:+o.open,h:+o.high,l:+o.low,c:+o.close};
+   if(a.length&&a[a.length-1].t===k.t)a[a.length-1]=k;else{a.push(k);if(a.length>1600)a.shift();clearTimeout(ptimer);ptimer=setTimeout(()=>{recompute();sched()},400)}}
+  else if(m.tick){price=+m.tick.quote;sched()}};
+ pub.onclose=()=>{if(run){setStatus('Disconnected. Reconnecting...');setTimeout(()=>{if(run)connect()},3000)}}}
+const TFN={60:'M1',300:'M5',900:'M15',3600:'H1',14400:'H4'};
+function start(){
+ saveCfg();readCfg();run=true;C={};SG={};TR=[];seen={};inited=false;cnt={};rc=0;
+ const on=[...document.querySelectorAll('.stc')].filter(x=>x.checked).map(x=>x.value);
+ if(!on.length){run=false;return setStatus('Tick at least one strategy.')}
+ GR=[60,300,900,3600,14400];
+ $('go').textContent='Stop';$('go').className='stop';$('al').textContent='';connect()}
+function stop(){run=false;if(pub){pub.onclose=null;pub.close()}$('go').textContent='Load signals';$('go').className='';setStatus('Stopped.')}
+function readCfg(){cfg={sym:$('sym').value.trim()||'frxXAUUSD',fvgMode:$('fm').value,regime:$('rg').value,sp:+$('sp').value||0}}
+const FS=['mk','sym','lot','vpp','sp','acct','win','fm','rg'];
+function saveCfg(){try{const o={};FS.forEach(i=>o[i]=$(i).value);o.st=[...document.querySelectorAll('.stc')].filter(x=>x.checked).map(x=>x.value);localStorage.setItem('gh_sig_cfg',JSON.stringify(o))}catch(e){}}
+function loadCfg(){try{const o=JSON.parse(localStorage.getItem('gh_sig_cfg')||'null');if(!o)return;FS.forEach(i=>{if(o[i]!=null)$(i).value=o[i]});document.querySelectorAll('.stc').forEach(x=>x.checked=o.st?o.st.includes(x.value):true)}catch(e){}}
+function syncMk(){const s=$('sym').value.trim(),o=[...$('mk').options].find(x=>x.value==s);$('mk').value=o?s:'custom'}
+$('mk').onchange=()=>{const v=$('mk').value;if(v!=='custom'){$('sym').value=v;const g=/^frx/.test(v);$('vpp').value=g?100:1;$('sp').value=g?0.30:0}saveCfg();if(run){stop();start()}else sched()};
+$('sym').addEventListener('change',()=>{syncMk();saveCfg();if(run){stop();start()}});
+['lot','vpp','sp','acct','win'].forEach(i=>$(i).addEventListener('input',()=>{readCfg();saveCfg();if(i==='sp'&&run){recompute()}sched()}));
+['fm','rg'].forEach(i=>$(i).addEventListener('change',()=>{readCfg();saveCfg();SG={};if(run&&inited){recompute()}sched()}));
+document.querySelectorAll('.stc').forEach(x=>x.addEventListener('change',()=>{saveCfg();if(run&&inited){recompute();sched()}}));
+$('go').onclick=()=>run?stop():start();
+$('cp').onclick=()=>{const rows=window.__rows||[];const t='time,strategy,side,entry,exit,result,pnl_usd,R\n'+rows.map(({o,m})=>[new Date(o.t*1000).toISOString(),NAMES[o.k],o.d>0?'BUY':'SELL',o.entry.toFixed(2),m.ex.toFixed(2),o.open?'OPEN':o.why,m.usd.toFixed(2),m.R.toFixed(2)].join(',')).join('\n');
+ const ta=$('csv');ta.value=t;ta.style.display='block';try{navigator.clipboard.writeText(t).then(()=>setStatus('Copied to clipboard.'))}catch(e){ta.select()}};
+const AB={fvgr:'FVGR',fvg:'FVG',pullback:'PB',hunter:'HUN',gold:'GLD',sweep:'SWP'};
+const CH={g:300,nb:80,off:0,sel:null,cw:5,hit:[]};
+function ix(b,t){let lo=0,hi=b.length-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(b[m].t<=t){r=m;lo=m+1}else hi=m-1}return r}
+function draw(){
+ const b=C[CH.g],cv=$('cv');if(!b||b.length<30||!cv)return;
+ const dp=window.devicePixelRatio||1,W=cv.clientWidth||340,H=400,ph=H-22,pw=W-52;
+ cv.width=W*dp;cv.height=H*dp;const g=cv.getContext('2d');g.scale(dp,dp);g.font='11px system-ui';
+ const n=b.length,nb=CH.nb;CH.off=Math.max(0,Math.min(CH.off,Math.max(0,n-nb)));
+ const e=n-CH.off,s=Math.max(0,e-nb),V=b.slice(s,e),cw=pw/nb;CH.cw=cw;
+ const c=b.map(x=>x.c),E9=ema(c,9),E21=ema(c,21),E200=ema(c,200),A=ind(b).A;
+ let lo=1e18,hi=-1e18;V.forEach((x,i)=>{lo=Math.min(lo,x.l,E21[s+i]);hi=Math.max(hi,x.h,E21[s+i])});
+ const pd=(hi-lo)*.1||1;lo-=pd;hi+=pd;
+ const X=i=>i*cw+cw/2,Y=v=>8+(hi-v)/(hi-lo)*(ph-16);
+ g.fillStyle='#0b0f14';g.fillRect(0,0,W,H);g.lineWidth=1;g.strokeStyle='#1f2a37';
+ for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4,y=Y(v);g.beginPath();g.moveTo(0,y);g.lineTo(pw,y);g.stroke();g.fillStyle='#8a98a8';g.fillText(v.toFixed(2),pw+3,y+4)}
+ g.save();g.beginPath();g.rect(0,0,pw,ph);g.clip();
+ if($('fz').checked)for(let i=Math.max(2,s-40);i<e;i++){const up=b[i].l>b[i-2].h,dn=b[i].h<b[i-2].l;if(!up&&!dn)continue;
+  const top=up?b[i].l:b[i-2].l,bot=up?b[i-2].h:b[i].h;if(top-bot<0.3*A[i])continue;
+  let fe=n-1;for(let j=i+1;j<n;j++)if(up?b[j].l<=bot:b[j].h>=top){fe=j;break}
+  if(fe<s)continue;const x0=X(i-1-s)-cw/2;g.fillStyle=up?'rgba(90,169,255,.22)':'rgba(193,139,255,.22)';
+  g.fillRect(x0,Y(top),X(Math.min(fe,e-1)-s)-x0+cw,Y(bot)-Y(top));g.fillStyle=up?'#5aa9ff':'#c18bff';g.fillText('FVG',Math.max(2,x0),Y(top)+10)}
+ const rows=window.__rows||[],T=[];
+ rows.forEach(r=>{const o=r.o,i0=ix(b,o.t);if(i0<0)return;const i1=o.open?n-1:Math.max(i0,ix(b,o.xt));if(i1<s||i0>=e)return;
+  const x1=X(i0-s)-cw/2,x2=X(Math.min(i1,e-1)-s)+cw/2,yt=Y(o.tp),ye=Y(o.entry),ys=Y(o.sl);
+  g.fillStyle='rgba(62,207,142,.17)';g.fillRect(x1,Math.min(yt,ye),x2-x1,Math.abs(ye-yt));
+  g.fillStyle='rgba(255,107,107,.17)';g.fillRect(x1,Math.min(ys,ye),x2-x1,Math.abs(ys-ye));
+  if(o.k+o.t===CH.sel){g.strokeStyle='#ffffff';g.lineWidth=1.5;g.strokeRect(x1,Math.min(yt,ys),x2-x1,Math.abs(ys-yt))}
+  T.push({r,i0,i1})});
+ V.forEach((x,i)=>{const col=x.c>=x.o?'#3ecf8e':'#ff6b6b';g.strokeStyle=g.fillStyle=col;g.lineWidth=1;g.beginPath();g.moveTo(X(i),Y(x.h));g.lineTo(X(i),Y(x.l));g.stroke();
+  const y1=Y(Math.max(x.o,x.c)),y2=Y(Math.min(x.o,x.c));g.fillRect(X(i)-cw*.35,y1,cw*.7,Math.max(1,y2-y1))});
+ const line=(a,col,w)=>{g.strokeStyle=col;g.lineWidth=w;g.beginPath();V.forEach((x,i)=>{const y=Y(a[s+i]);i?g.lineTo(X(i),y):g.moveTo(X(i),y)});g.stroke()};
+ line(E9,'#9aa7b6',1);line(E21,'#5aa9ff',1.5);line(E200,'#ffb454',1.5);
+ CH.hit=[];g.textAlign='center';
+ T.forEach(({r,i0,i1})=>{const o=r.o,xe=X(i0-s),ye=Y(o.entry),key=o.k+o.t;
+  if(i1<e&&!o.open){g.beginPath();g.arc(X(i1-s),Y(r.m.ex),4,0,6.3);g.fillStyle=o.why==='TP'?'#3ecf8e':o.why==='SL'?'#ff6b6b':'#ffd166';g.fill()}
+  if(i0>=s){g.fillStyle=o.d>0?'#3ecf8e':'#ff6b6b';g.font='bold 14px system-ui';g.fillText(o.d>0?'\u25B2':'\u25BC',xe,o.d>0?ye+15:ye-5);
+   g.font='10px system-ui';g.fillStyle='#e8eef5';g.fillText(AB[o.k],xe,o.d>0?ye+27:ye-17);CH.hit.push({x:xe,y:ye,key})}});
+ g.textAlign='left';g.font='11px system-ui';
+ const hl=(v,col,t)=>{if(!(v>lo&&v<hi))return;const y=Y(v);g.strokeStyle=col;g.lineWidth=1;g.setLineDash([4,3]);g.beginPath();g.moveTo(0,y);g.lineTo(pw,y);g.stroke();g.setLineDash([]);g.fillStyle=col;g.fillText(t,4,y-3)};
+ const sr=rows.find(r=>r.o.k+r.o.t===CH.sel);if(sr){hl(sr.o.entry,'#ffffff','entry');hl(sr.o.sl,'#ff6b6b','stop');hl(sr.o.tp,'#3ecf8e','target')}
+ const pr=price||b[n-1].c;hl(pr,'#cfd8e3','price');
+ g.restore();g.fillStyle='#cfd8e3';if(pr>lo&&pr<hi)g.fillText(pr.toFixed(2),pw+3,Y(pr)+4);
+ [0,.33,.66,.97].forEach(q=>{const i=Math.min(V.length-1,Math.floor(q*V.length));if(V[i])g.fillText(new Date(V[i].t*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}),Math.max(0,X(i)-14),H-6)})}
+function detail(r){const o=r.o,m=r.m,el=$('sel');el.style.display='block';
+ el.innerHTML=`<div><b>${NAMES[o.k]}</b> &middot; ${o.d>0?'BUY':'SELL'}<span class="tag ${o.open?'live':''}">${o.open?'OPEN (live)':o.why}</span></div><div class="m">${new Date(o.t*1000).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}${o.open?'':' to '+new Date(o.xt*1000).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div><div class="m">Entry ${o.entry.toFixed(2)} &rarr; ${m.ex.toFixed(2)} &middot; stop ${o.sl.toFixed(2)} &middot; target ${o.tp.toFixed(2)}</div><div class="p ${m.usd>=0?'good':'bad'}">${f2(m.usd)} &middot; ${m.R>=0?'+':''}${m.R.toFixed(1)}R</div>`}
+function pick(key,scroll){const r=(window.__rows||[]).find(x=>x.o.k+x.o.t===key);if(!r)return;CH.sel=key;const b=C[CH.g],i0=b?ix(b,r.o.t):-1;
+ if(i0>=0)CH.off=Math.max(0,b.length-(i0+Math.round(CH.nb/2)));
+ detail(r);draw();document.querySelectorAll('.tr').forEach(x=>{if(x.dataset)x.classList.toggle('sel',x.dataset.k===key)});
+ if(scroll&&$('cv').scrollIntoView)$('cv').scrollIntoView({behavior:'smooth',block:'center'})}
+$('tf').onchange=()=>{CH.g=+$('tf').value;CH.off=0;if(CH.sel)pick(CH.sel);else draw()};
+$('zm').onchange=()=>{CH.nb=+$('zm').value;draw()};$('fz').onchange=draw;
+$('bp').onclick=()=>{CH.off+=Math.round(CH.nb/2);draw()};$('bn').onclick=()=>{CH.off=Math.max(0,CH.off-Math.round(CH.nb/2));draw()};$('bl').onclick=()=>{CH.off=0;draw()};
+(()=>{const cv=$('cv');let d=null;
+ cv.addEventListener('pointerdown',e=>{d={x:e.clientX,off:CH.off,mv:false};try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+ cv.addEventListener('pointermove',e=>{if(!d)return;const dx=e.clientX-d.x;if(Math.abs(dx)>5)d.mv=true;if(d.mv){CH.off=Math.max(0,d.off+Math.round(dx/CH.cw));draw()}});
+ cv.addEventListener('pointerup',e=>{if(d&&!d.mv){const rc=cv.getBoundingClientRect(),x=e.clientX-rc.left,y=e.clientY-rc.top;let best=null,bd=900;CH.hit.forEach(h=>{const q=(h.x-x)*(h.x-x)+(h.y-y)*(h.y-y);if(q<bd){bd=q;best=h}});if(best)pick(best.key)}d=null});
+ cv.addEventListener('pointercancel',()=>{d=null})})();
+loadCfg();readCfg();syncMk();render();
+</script></body></html>
